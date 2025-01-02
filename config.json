@@ -1,3 +1,4 @@
 {
-    "mod_channel_id": 0
+    "mod_channel_id": 0,
+    "monitor_address": "127.0.0.1:8003"
 }

@@ -8,6 +8,7 @@ version = "0.1.0"
 dependencies = [
  "dotenv",
  "env_logger",
+ "ffmonitor",
  "poise",
  "serde",
  "serde_json",
@@ -489,6 +490,15 @@ name = "fastrand"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
+
+[[package]]
+name = "ffmonitor"
+version = "1.1.0"
+source = "git+https://github.com/OpenFusionProject/ffmonitor?tag=v1.1.0#59fd901ae20933f2e1e69ff1e8ffdbfc8d4fde59"
+dependencies = [
+ "log",
+ "regex",
+]
 
 [[package]]
 name = "flate2"

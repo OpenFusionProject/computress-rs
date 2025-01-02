@@ -1,6 +1,9 @@
+mod monitor;
+
 use std::{process::exit, sync::Arc};
 
 use dotenv::dotenv;
+use ffmonitor::Monitor;
 use poise::serenity_prelude::{ChannelId, ClientBuilder, GatewayIntents, Http, User};
 use serde::Deserialize;
 use tokio::sync::OnceCell;
@@ -11,6 +14,7 @@ type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, Deserialize)]
 struct Config {
     mod_channel_id: u64,
+    monitor_address: String,
 }
 impl Config {
     fn validate(&self) -> Option<&str> {
@@ -26,6 +30,7 @@ struct Globals {
     bot_user: User,
     http: Arc<Http>,
     mod_channel: ChannelId,
+    monitor_address: String,
 }
 
 static GLOBALS: OnceCell<Globals> = OnceCell::const_new();
@@ -49,6 +54,20 @@ async fn on_init() -> Result<()> {
     );
 
     send_message(globals.mod_channel, "Bot started").await?;
+
+    // start ffmonitor
+    let rt = tokio::runtime::Handle::current();
+    let callback = move |event| {
+        rt.spawn(async move {
+            if let Err(e) = monitor::handle_monitor_event(event).await {
+                println!("Error while handling monitor event: {:?}", e);
+            }
+        });
+    };
+    if let Err(e) = Monitor::new_with_callback(&globals.monitor_address, Box::new(callback)) {
+        return Err(format!("Error preparing ffmonitor: {:?}", e).into());
+    }
+
     Ok(())
 }
 
@@ -113,6 +132,7 @@ async fn main() {
                         bot_user,
                         http: ctx.http.clone(),
                         mod_channel: ChannelId::new(config.mod_channel_id),
+                        monitor_address: config.monitor_address,
                     })
                     .unwrap();
 
