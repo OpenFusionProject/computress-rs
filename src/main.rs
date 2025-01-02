@@ -1,19 +1,41 @@
 use std::{process::exit, sync::Arc};
 
 use dotenv::dotenv;
-use poise::serenity_prelude::{ClientBuilder, GatewayIntents, Http, User};
+use poise::serenity_prelude::{ChannelId, ClientBuilder, GatewayIntents, Http, User};
+use serde::Deserialize;
 use tokio::sync::OnceCell;
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Result<T> = std::result::Result<T, Error>;
 
+#[derive(Debug, Deserialize)]
+struct Config {
+    mod_channel_id: u64,
+}
+impl Config {
+    fn validate(&self) -> Option<&str> {
+        if self.mod_channel_id == 0 {
+            return Some("mod_channel_id must be set");
+        }
+        None
+    }
+}
+
 #[derive(Debug)]
 struct Globals {
     bot_user: User,
     http: Arc<Http>,
+    mod_channel: ChannelId,
 }
 
 static GLOBALS: OnceCell<Globals> = OnceCell::const_new();
+
+async fn send_message(channel_id: ChannelId, message: &str) -> Result<()> {
+    let globals = GLOBALS.get().unwrap();
+    let http = &globals.http;
+    channel_id.say(http, message).await?;
+    Ok(())
+}
 
 async fn on_init() -> Result<()> {
     let globals = GLOBALS.get().unwrap();
@@ -25,6 +47,8 @@ async fn on_init() -> Result<()> {
         bot_user.discriminator.map_or(0, |d| d.get()),
         bot_user.id
     );
+
+    send_message(globals.mod_channel, "Bot started").await?;
     Ok(())
 }
 
@@ -40,6 +64,23 @@ async fn main() {
         println!("Loaded .env");
     }
 
+    // Load, parse, and validate config
+    let Ok(config_file_contents) = std::fs::read_to_string("config.json") else {
+        println!("config.json missing");
+        exit(1);
+    };
+    let config: Config = match serde_json::from_str(&config_file_contents) {
+        Ok(config) => config,
+        Err(e) => {
+            println!("Error while parsing config.json: {:?}", e);
+            exit(1);
+        }
+    };
+    if let Some(e) = config.validate() {
+        println!("Invalid config: {}", e);
+        exit(1);
+    }
+
     let Ok(token) = std::env::var("DISCORD_TOKEN") else {
         println!("DISCORD_TOKEN environment variable missing");
         exit(1);
@@ -51,7 +92,7 @@ async fn main() {
             commands: vec![],
             ..Default::default()
         })
-        .setup(|ctx, _ready, framework| {
+        .setup(move |ctx, _ready, framework| {
             Box::pin(async move {
                 if let Err(e) =
                     poise::builtins::register_globally(ctx, &framework.options().commands).await
@@ -71,6 +112,7 @@ async fn main() {
                     .set(Globals {
                         bot_user,
                         http: ctx.http.clone(),
+                        mod_channel: ChannelId::new(config.mod_channel_id),
                     })
                     .unwrap();
 

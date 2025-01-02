@@ -9,6 +9,8 @@ dependencies = [
  "dotenv",
  "env_logger",
  "poise",
+ "serde",
+ "serde_json",
  "tokio",
 ]
 
