@@ -140,6 +140,8 @@ async fn check(ctx: poise::Context<'_, (), Error>) -> Result<()> {
 
 #[tokio::main]
 async fn main() {
+    println!("Computress v{}", env!("CARGO_PKG_VERSION"));
+
     // Load environment variables from .env file
     let dotenv_loaded = dotenv().is_ok();
 
