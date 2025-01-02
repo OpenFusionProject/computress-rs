@@ -1,10 +1,10 @@
 mod monitor;
 
-use std::{process::exit, sync::Arc};
+use std::process::exit;
 
 use dotenv::dotenv;
 use ffmonitor::Monitor;
-use poise::serenity_prelude::{ChannelId, ClientBuilder, GatewayIntents, Http, User};
+use poise::serenity_prelude::{ChannelId, ClientBuilder, Context, GatewayIntents, User};
 use serde::Deserialize;
 use tokio::sync::OnceCell;
 
@@ -32,7 +32,7 @@ impl Config {
 #[derive(Debug)]
 struct Globals {
     bot_user: User,
-    http: Arc<Http>,
+    context: Context,
     mod_channel: ChannelId,
     log_channel: ChannelId,
     monitor_address: String,
@@ -42,7 +42,7 @@ static GLOBALS: OnceCell<Globals> = OnceCell::const_new();
 
 async fn send_message(channel_id: ChannelId, message: &str) -> Result<()> {
     let globals = GLOBALS.get().unwrap();
-    let http = &globals.http;
+    let http = &globals.context.http;
     channel_id.say(http, message).await?;
     Ok(())
 }
@@ -135,7 +135,7 @@ async fn main() {
                 GLOBALS
                     .set(Globals {
                         bot_user,
-                        http: ctx.http.clone(),
+                        context: ctx.clone(),
                         mod_channel: ChannelId::new(config.mod_channel_id),
                         log_channel: ChannelId::new(config.log_channel_id),
                         monitor_address: config.monitor_address,
