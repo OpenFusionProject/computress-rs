@@ -3,19 +3,6 @@
 version = 4
 
 [[package]]
-name = "Computress"
-version = "1.0.0"
-dependencies = [
- "dotenv",
- "env_logger",
- "ffmonitor",
- "poise",
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
 name = "addr2line"
 version = "0.24.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -265,6 +252,19 @@ name = "colorchoice"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b63caa9aa9397e2d9480a9b13673856c78d8ac123288526c37d7839f2a86990"
+
+[[package]]
+name = "computress-rs"
+version = "1.0.0"
+dependencies = [
+ "dotenv",
+ "env_logger",
+ "ffmonitor",
+ "poise",
+ "serde",
+ "serde_json",
+ "tokio",
+]
 
 [[package]]
 name = "core-foundation"

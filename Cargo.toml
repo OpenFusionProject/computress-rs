@@ -1,8 +1,12 @@
 [package]
-name = "Computress"
+name = "computress-rs"
 version = "1.0.0"
 authors = ["OpenFusion Contributors"]
 edition = "2021"
+
+[[bin]]
+path = "src/main.rs"
+name = "computress"
 
 [dependencies]
 dotenv = "0.15.0"
