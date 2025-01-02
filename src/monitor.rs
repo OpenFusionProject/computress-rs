@@ -1,4 +1,4 @@
-use ffmonitor::{ChatEvent, EmailEvent, Event, MonitorNotification, MonitorUpdate};
+use ffmonitor::{BroadcastEvent, ChatEvent, EmailEvent, Event, MonitorNotification, MonitorUpdate};
 
 use crate::{send_message, update_status, Globals, Result, GLOBALS};
 
@@ -10,6 +10,15 @@ async fn handle_chat_event(globals: &Globals, chat: ChatEvent) -> Result<()> {
         ),
         None => format!("[{:?}] {}: {}", chat.kind, chat.from, chat.message),
     };
+    send_message(globals.log_channel, &message).await?;
+    Ok(())
+}
+
+async fn handle_bcast_event(globals: &Globals, bcast: BroadcastEvent) -> Result<()> {
+    let message = format!(
+        "**[Broadcast] ({:?}) {}: {}**",
+        bcast.scope, bcast.from, bcast.message,
+    );
     send_message(globals.log_channel, &message).await?;
     Ok(())
 }
@@ -34,6 +43,7 @@ async fn handle_update(globals: &Globals, update: MonitorUpdate) -> Result<()> {
         match event {
             Event::Chat(chat_event) => handle_chat_event(globals, chat_event).await?,
             Event::Email(email_event) => handle_email_event(globals, email_event).await?,
+            Event::Broadcast(bcast_event) => handle_bcast_event(globals, bcast_event).await?,
             _ => {}
         }
     }
