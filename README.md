@@ -26,7 +26,7 @@ Next, fill out `config.json` in this project:
 
 Finally, set the `DISCORD_TOKEN` environment variable to your Discord bot's token (.env file supported!) and run the bot with:
 ```
-cargo run --release
+cargo run --release [path to config.json]
 ```
 
 ## Features

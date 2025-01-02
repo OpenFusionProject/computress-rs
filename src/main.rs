@@ -1,6 +1,6 @@
 mod monitor;
 
-use std::process::exit;
+use std::{env::args, process::exit};
 
 use dotenv::dotenv;
 use ffmonitor::Monitor;
@@ -153,8 +153,9 @@ async fn main() {
     }
 
     // Load, parse, and validate config
-    let Ok(config_file_contents) = std::fs::read_to_string("config.json") else {
-        println!("config.json missing");
+    let config_file_path = args().nth(1).unwrap_or("config.json".to_string());
+    let Ok(config_file_contents) = std::fs::read_to_string(&config_file_path) else {
+        println!("Config file missing: {}", config_file_path);
         exit(1);
     };
     let config: Config = match serde_json::from_str(&config_file_contents) {
@@ -168,6 +169,7 @@ async fn main() {
         println!("Invalid config: {}", e);
         exit(1);
     }
+    println!("Loaded config: {}", config_file_path);
 
     let Ok(token) = std::env::var("DISCORD_TOKEN") else {
         println!("DISCORD_TOKEN environment variable missing");
