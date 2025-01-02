@@ -1,0 +1,7 @@
+[package]
+name = "Computress"
+version = "0.1.0"
+authors = ["OpenFusion Contributors"]
+edition = "2021"
+
+[dependencies]
