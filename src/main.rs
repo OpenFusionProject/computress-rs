@@ -4,9 +4,11 @@ use std::process::exit;
 
 use dotenv::dotenv;
 use ffmonitor::Monitor;
-use poise::serenity_prelude::{ChannelId, ClientBuilder, Context, GatewayIntents, User};
+use poise::serenity_prelude::{
+    ActivityData, ChannelId, ClientBuilder, Context, GatewayIntents, User,
+};
 use serde::Deserialize;
-use tokio::sync::OnceCell;
+use tokio::sync::{Mutex, OnceCell};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Result<T> = std::result::Result<T, Error>;
@@ -30,20 +32,53 @@ impl Config {
 }
 
 #[derive(Debug)]
+struct State {
+    last_player_count: Option<usize>,
+}
+
+#[derive(Debug)]
 struct Globals {
     bot_user: User,
     context: Context,
     mod_channel: ChannelId,
     log_channel: ChannelId,
     monitor_address: String,
+    //
+    state: Mutex<State>,
 }
 
 static GLOBALS: OnceCell<Globals> = OnceCell::const_new();
+
+async fn set_listening_to(text: &str) -> Result<()> {
+    let globals = GLOBALS.get().unwrap();
+    globals
+        .context
+        .set_activity(Some(ActivityData::listening(text)));
+    Ok(())
+}
 
 async fn send_message(channel_id: ChannelId, message: &str) -> Result<()> {
     let globals = GLOBALS.get().unwrap();
     let http = &globals.context.http;
     channel_id.say(http, message).await?;
+    Ok(())
+}
+
+async fn update_status(num_players: Option<usize>) -> Result<()> {
+    let globals = GLOBALS.get().unwrap();
+    let mut state = globals.state.lock().await;
+    state.last_player_count = num_players;
+
+    let text = if let Some(num_players) = num_players {
+        if num_players == 1 {
+            "1 player".to_string()
+        } else {
+            format!("{} players", num_players)
+        }
+    } else {
+        "nothing".to_string()
+    };
+    set_listening_to(&text).await?;
     Ok(())
 }
 
@@ -59,6 +94,7 @@ async fn on_init() -> Result<()> {
     );
 
     send_message(globals.mod_channel, "Bot started").await?;
+    update_status(None).await?;
 
     // start ffmonitor
     let rt = tokio::runtime::Handle::current();
@@ -132,6 +168,10 @@ async fn main() {
                     }
                 };
 
+                let state = State {
+                    last_player_count: None,
+                };
+
                 GLOBALS
                     .set(Globals {
                         bot_user,
@@ -139,6 +179,8 @@ async fn main() {
                         mod_channel: ChannelId::new(config.mod_channel_id),
                         log_channel: ChannelId::new(config.log_channel_id),
                         monitor_address: config.monitor_address,
+                        //
+                        state: Mutex::new(state),
                     })
                     .unwrap();
 

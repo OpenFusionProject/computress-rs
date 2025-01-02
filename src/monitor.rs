@@ -1,6 +1,6 @@
 use ffmonitor::{ChatEvent, EmailEvent, Event, MonitorNotification, MonitorUpdate};
 
-use crate::{send_message, Globals, Result, GLOBALS};
+use crate::{send_message, update_status, Globals, Result, GLOBALS};
 
 async fn handle_chat_event(globals: &Globals, chat: ChatEvent) -> Result<()> {
     let message = match chat.to {
@@ -26,6 +26,9 @@ async fn handle_email_event(globals: &Globals, email: EmailEvent) -> Result<()> 
 }
 
 async fn handle_update(globals: &Globals, update: MonitorUpdate) -> Result<()> {
+    let num_players = update.get_player_count();
+    update_status(Some(num_players)).await?;
+
     let events = update.get_events();
     for event in events {
         match event {
@@ -41,7 +44,10 @@ pub(crate) async fn handle_notification(event: MonitorNotification) -> Result<()
     let globals = GLOBALS.get().unwrap();
     match event {
         MonitorNotification::Connected => println!("Connected to monitor"),
-        MonitorNotification::Disconnected => println!("Disconnected from monitor"),
+        MonitorNotification::Disconnected => {
+            println!("Disconnected from monitor");
+            update_status(None).await?;
+        }
         MonitorNotification::Updated(update) => handle_update(globals, update).await?,
     }
     Ok(())
