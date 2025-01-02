@@ -5,7 +5,7 @@ use std::process::exit;
 use dotenv::dotenv;
 use ffmonitor::Monitor;
 use poise::serenity_prelude::{
-    ActivityData, ChannelId, ClientBuilder, Context, GatewayIntents, User,
+    ActivityData, ChannelId, ClientBuilder, Context, GatewayIntents, GuildId, User,
 };
 use serde::Deserialize;
 use tokio::sync::{Mutex, OnceCell};
@@ -15,12 +15,16 @@ type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Deserialize)]
 struct Config {
+    guild_id: u64,
     mod_channel_id: u64,
     log_channel_id: u64,
     monitor_address: String,
 }
 impl Config {
     fn validate(&self) -> Option<&str> {
+        if self.guild_id == 0 {
+            return Some("guild_id must be set");
+        }
         if self.mod_channel_id == 0 {
             return Some("mod_channel_id must be set");
         }
@@ -112,6 +116,28 @@ async fn on_init() -> Result<()> {
     Ok(())
 }
 
+/// Check the status of the server
+#[poise::command(slash_command)]
+async fn check(ctx: poise::Context<'_, (), Error>) -> Result<()> {
+    let globals = GLOBALS.get().unwrap();
+    let state = globals.state.lock().await;
+    let msg = match state.last_player_count {
+        Some(num_players) => {
+            let mut s = format!(
+                "The server is currently **online** :white_check_mark: with **{}** player",
+                num_players
+            );
+            if num_players != 1 {
+                s.push('s');
+            }
+            s
+        }
+        None => "The server is currently **offline** :no_entry:".to_string(),
+    };
+    ctx.say(msg).await?;
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() {
     // Load environment variables from .env file
@@ -149,13 +175,15 @@ async fn main() {
     let intents = GatewayIntents::non_privileged();
     let framework: poise::Framework<(), Error> = poise::Framework::builder()
         .options(poise::FrameworkOptions {
-            commands: vec![],
+            commands: vec![check()],
             ..Default::default()
         })
         .setup(move |ctx, _ready, framework| {
             Box::pin(async move {
+                let guild_id = GuildId::new(config.guild_id);
                 if let Err(e) =
-                    poise::builtins::register_globally(ctx, &framework.options().commands).await
+                    poise::builtins::register_in_guild(ctx, &framework.options().commands, guild_id)
+                        .await
                 {
                     println!("Error while registering commands: {:?}", e);
                 };
