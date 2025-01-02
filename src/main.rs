@@ -14,12 +14,16 @@ type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, Deserialize)]
 struct Config {
     mod_channel_id: u64,
+    log_channel_id: u64,
     monitor_address: String,
 }
 impl Config {
     fn validate(&self) -> Option<&str> {
         if self.mod_channel_id == 0 {
             return Some("mod_channel_id must be set");
+        }
+        if self.log_channel_id == 0 {
+            return Some("log_channel_id must be set");
         }
         None
     }
@@ -30,6 +34,7 @@ struct Globals {
     bot_user: User,
     http: Arc<Http>,
     mod_channel: ChannelId,
+    log_channel: ChannelId,
     monitor_address: String,
 }
 
@@ -57,9 +62,9 @@ async fn on_init() -> Result<()> {
 
     // start ffmonitor
     let rt = tokio::runtime::Handle::current();
-    let callback = move |event| {
+    let callback = move |notification| {
         rt.spawn(async move {
-            if let Err(e) = monitor::handle_monitor_event(event).await {
+            if let Err(e) = monitor::handle_notification(notification).await {
                 println!("Error while handling monitor event: {:?}", e);
             }
         });
@@ -132,6 +137,7 @@ async fn main() {
                         bot_user,
                         http: ctx.http.clone(),
                         mod_channel: ChannelId::new(config.mod_channel_id),
+                        log_channel: ChannelId::new(config.log_channel_id),
                         monitor_address: config.monitor_address,
                     })
                     .unwrap();
