@@ -183,6 +183,11 @@ async fn main() {
         })
         .setup(move |ctx, _ready, framework| {
             Box::pin(async move {
+                // Deregister any previously set global commands
+                let empty_global_commands: Vec<poise::Command<(), ()>> = vec![];
+                let _ =
+                    poise::builtins::register_globally(ctx, empty_global_commands.as_slice()).await;
+
                 let guild_id = GuildId::new(config.guild_id);
                 if let Err(e) =
                     poise::builtins::register_in_guild(ctx, &framework.options().commands, guild_id)
