@@ -3,6 +3,10 @@ use ffmonitor::{BroadcastEvent, ChatEvent, EmailEvent, Event, MonitorNotificatio
 use crate::{send_message, update_status, Globals, Result, GLOBALS};
 
 async fn handle_chat_event(globals: &Globals, chat: ChatEvent) -> Result<()> {
+    let Some(channel) = globals.log_channel else {
+        return Ok(());
+    };
+
     let message = match chat.to {
         Some(to) => format!(
             "[{:?}] {} (to {}): {}",
@@ -10,27 +14,35 @@ async fn handle_chat_event(globals: &Globals, chat: ChatEvent) -> Result<()> {
         ),
         None => format!("[{:?}] {}: {}", chat.kind, chat.from, chat.message),
     };
-    send_message(globals.log_channel, &message).await?;
+    send_message(channel, &message).await?;
     Ok(())
 }
 
 async fn handle_bcast_event(globals: &Globals, bcast: BroadcastEvent) -> Result<()> {
+    let Some(channel) = globals.log_channel else {
+        return Ok(());
+    };
+
     let message = format!(
         "**[Broadcast] ({:?}) {}: {}**",
         bcast.scope, bcast.from, bcast.message,
     );
-    send_message(globals.log_channel, &message).await?;
+    send_message(channel, &message).await?;
     Ok(())
 }
 
 async fn handle_email_event(globals: &Globals, email: EmailEvent) -> Result<()> {
+    let Some(channel) = globals.log_channel else {
+        return Ok(());
+    };
+
     let subject = email.subject.unwrap_or("no subject".to_string());
     let body = email.body.join("\n");
     let message = format!(
         "[Email] {} (to {}): <{}>\n```{}```",
         email.from, email.to, subject, body
     );
-    send_message(globals.log_channel, &message).await?;
+    send_message(channel, &message).await?;
     Ok(())
 }
 

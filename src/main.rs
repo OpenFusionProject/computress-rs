@@ -18,6 +18,7 @@ struct Config {
     guild_id: u64,
     mod_channel_id: u64,
     log_channel_id: u64,
+    name_approvals_channel_id: u64,
     monitor_address: String,
 }
 impl Config {
@@ -27,9 +28,6 @@ impl Config {
         }
         if self.mod_channel_id == 0 {
             return Some("mod_channel_id must be set");
-        }
-        if self.log_channel_id == 0 {
-            return Some("log_channel_id must be set");
         }
         None
     }
@@ -45,7 +43,8 @@ struct Globals {
     bot_user: User,
     context: Context,
     mod_channel: ChannelId,
-    log_channel: ChannelId,
+    log_channel: Option<ChannelId>,
+    name_approvals_channel: Option<ChannelId>,
     monitor_address: String,
     //
     state: Mutex<State>,
@@ -209,7 +208,16 @@ async fn main() {
                         bot_user,
                         context: ctx.clone(),
                         mod_channel: ChannelId::new(config.mod_channel_id),
-                        log_channel: ChannelId::new(config.log_channel_id),
+                        log_channel: if config.log_channel_id != 0 {
+                            Some(ChannelId::new(config.log_channel_id))
+                        } else {
+                            None
+                        },
+                        name_approvals_channel: if config.name_approvals_channel_id != 0 {
+                            Some(ChannelId::new(config.name_approvals_channel_id))
+                        } else {
+                            None
+                        },
                         monitor_address: config.monitor_address,
                         //
                         state: Mutex::new(state),
