@@ -1,30 +1,43 @@
+mod endpoint;
 mod monitor;
 
-use std::{env::args, process::exit};
+use std::{env::args, process::exit, sync::LazyLock, time::Duration};
 
 use dotenv::dotenv;
 use ffmonitor::Monitor;
 use poise::serenity_prelude::{
-    ActivityData, ChannelId, ClientBuilder, Context, GatewayIntents, GuildId, User,
+    ActivityData, ChannelId, ClientBuilder, ComponentInteraction, ComponentInteractionCollector,
+    Context, CreateActionRow, CreateButton, CreateInteractionResponse,
+    CreateInteractionResponseMessage, CreateMessage, GatewayIntents, GuildId, RoleId, User,
 };
+use regex::Regex;
 use serde::Deserialize;
 use tokio::sync::{Mutex, OnceCell};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Result<T> = std::result::Result<T, Error>;
 
+const NAME_REQUEST_PATTERN: &str = r"^Name request from Player (\d+): \*\*(.+)\*\*$";
+static NAME_REQUEST_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(NAME_REQUEST_PATTERN).unwrap());
+
 #[derive(Debug, Deserialize)]
 struct Config {
     guild_id: u64,
+    mod_role_id: u64,
     mod_channel_id: u64,
     log_channel_id: u64,
     name_approvals_channel_id: u64,
     monitor_address: String,
+    ofapi_endpoint: String,
 }
 impl Config {
     fn validate(&self) -> Option<&str> {
         if self.guild_id == 0 {
             return Some("guild_id must be set");
+        }
+        if self.mod_role_id == 0 {
+            return Some("mod_role_id must be set");
         }
         if self.mod_channel_id == 0 {
             return Some("mod_channel_id must be set");
@@ -42,12 +55,33 @@ struct State {
 struct Globals {
     bot_user: User,
     context: Context,
+    mod_role: RoleId,
     mod_channel: ChannelId,
     log_channel: Option<ChannelId>,
     name_approvals_channel: Option<ChannelId>,
     monitor_address: String,
+    ofapi_endpoint: String,
     //
     state: Mutex<State>,
+}
+
+#[derive(Debug)]
+struct NameRequest {
+    player_uid: u64,
+    requested_name: String,
+}
+impl NameRequest {
+    // we can't rely on state to hold the name request, so reconstruct it from the notification we sent
+    fn parse_from_notification_message(msg: &str) -> Result<NameRequest> {
+        let captures = NAME_REQUEST_REGEX.captures(msg).ok_or("Malformed")?;
+        let player_uid = captures[1].parse::<u64>()?;
+        let requested_name = captures[2].to_string();
+        let req = NameRequest {
+            player_uid,
+            requested_name,
+        };
+        Ok(req)
+    }
 }
 
 static GLOBALS: OnceCell<Globals> = OnceCell::const_new();
@@ -67,6 +101,25 @@ async fn send_message(channel_id: ChannelId, message: &str) -> Result<()> {
     Ok(())
 }
 
+async fn send_message_with_buttons(
+    channel_id: ChannelId,
+    message: &str,
+    buttons: Vec<CreateButton>,
+) -> Result<()> {
+    let globals = GLOBALS.get().unwrap();
+    let http = &globals.context.http;
+    let components = vec![CreateActionRow::Buttons(buttons)];
+    channel_id
+        .send_message(
+            http,
+            CreateMessage::default()
+                .content(message)
+                .components(components),
+        )
+        .await?;
+    Ok(())
+}
+
 async fn update_status(num_players: Option<usize>) -> Result<()> {
     let globals = GLOBALS.get().unwrap();
     let mut state = globals.state.lock().await;
@@ -83,6 +136,102 @@ async fn update_status(num_players: Option<usize>) -> Result<()> {
     };
     set_listening_to(&text).await?;
     Ok(())
+}
+
+async fn handle_namereq_approve(
+    globals: &Globals,
+    interaction: &ComponentInteraction,
+) -> Result<()> {
+    let msg = interaction.message.content.clone();
+    let namereq = NameRequest::parse_from_notification_message(&msg)?;
+    endpoint::send_name_request_decision(globals, &namereq, "approved").await?;
+
+    // Try to delete the initial message
+    let _ = interaction.message.delete(&globals.context.http).await;
+
+    let Some(channel) = globals.log_channel else {
+        return Ok(());
+    };
+    let msg = format!(
+        "Name request from Player {} **approved** :white_check_mark:: {}",
+        namereq.player_uid, namereq.requested_name
+    );
+    send_message(channel, &msg).await?;
+    Ok(())
+}
+
+async fn handle_namereq_deny(globals: &Globals, interaction: &ComponentInteraction) -> Result<()> {
+    let msg = interaction.message.content.clone();
+    let namereq = NameRequest::parse_from_notification_message(&msg)?;
+    endpoint::send_name_request_decision(globals, &namereq, "denied").await?;
+
+    // Try to delete the initial message
+    let _ = interaction.message.delete(&globals.context.http).await;
+
+    let Some(channel) = globals.log_channel else {
+        return Ok(());
+    };
+    let msg = format!(
+        "Name request from Player {} **denied** :no_entry:: {}",
+        namereq.player_uid, namereq.requested_name
+    );
+    send_message(channel, &msg).await?;
+    Ok(())
+}
+
+const ALLOWED_INTERACTIONS: [&str; 2] = ["namereq_approve", "namereq_deny"];
+const PRIVILEGED_INTERACTIONS: [&str; 2] = ["namereq_approve", "namereq_deny"];
+
+async fn handle_interaction(globals: &Globals, interaction: ComponentInteraction) -> Result<()> {
+    let http = &globals.context.http;
+
+    // Check perms
+    let id = interaction.data.custom_id.as_str();
+    let member = interaction.member.as_ref().unwrap();
+    if PRIVILEGED_INTERACTIONS.contains(&id) && !member.roles.contains(&globals.mod_role) {
+        interaction
+            .create_response(
+                http,
+                CreateInteractionResponse::Message(
+                    CreateInteractionResponseMessage::default()
+                        .ephemeral(true)
+                        .content("You don't have permission to do that."),
+                ),
+            )
+            .await?;
+        return Ok(());
+    }
+
+    match id {
+        "namereq_approve" => handle_namereq_approve(globals, &interaction).await?,
+        "namereq_deny" => handle_namereq_deny(globals, &interaction).await?,
+        _ => return Err(format!("Unknown interaction: {}", id).into()),
+    }
+
+    Ok(())
+}
+
+async fn collect_interactions() {
+    wait_for_globals().await;
+    println!("Listening for interactions");
+    let globals = GLOBALS.get().unwrap();
+    loop {
+        let collector = ComponentInteractionCollector::new(globals.context.clone())
+            .filter(move |i| ALLOWED_INTERACTIONS.contains(&i.data.custom_id.as_str()));
+        let Some(interaction) = collector.next().await else {
+            println!("No interaction");
+            continue;
+        };
+        if let Err(e) = handle_interaction(globals, interaction).await {
+            println!("Error while handling interaction: {:?}", e);
+        }
+    }
+}
+
+async fn wait_for_globals() {
+    while GLOBALS.get().is_none() {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
 }
 
 async fn on_init() -> Result<()> {
@@ -212,6 +361,7 @@ async fn main() {
                     .set(Globals {
                         bot_user,
                         context: ctx.clone(),
+                        mod_role: RoleId::new(config.mod_role_id),
                         mod_channel: ChannelId::new(config.mod_channel_id),
                         log_channel: if config.log_channel_id != 0 {
                             Some(ChannelId::new(config.log_channel_id))
@@ -224,6 +374,7 @@ async fn main() {
                             None
                         },
                         monitor_address: config.monitor_address,
+                        ofapi_endpoint: config.ofapi_endpoint,
                         //
                         state: Mutex::new(state),
                     })
@@ -248,6 +399,8 @@ async fn main() {
             exit(1);
         }
     };
+
+    tokio::spawn(collect_interactions());
 
     let res = client.start().await;
     if let Err(e) = res {
