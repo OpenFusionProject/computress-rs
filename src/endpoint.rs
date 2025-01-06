@@ -1,6 +1,6 @@
 use std::{env, sync::OnceLock, time::Duration};
 
-use reqwest::Client;
+use reqwest::{Client, StatusCode};
 use serde::Serialize;
 
 use crate::{Globals, NameRequest, Result};
@@ -46,7 +46,7 @@ pub(crate) async fn send_name_request_decision(
     namereq: &NameRequest,
     decision: &str,
     by: &str,
-) -> Result<()> {
+) -> Result<bool> {
     let endpoint = format!("https://{}/namereq", globals.ofapi_endpoint);
     let req = NameRequestDecision {
         player_uid: namereq.player_uid,
@@ -67,5 +67,7 @@ pub(crate) async fn send_name_request_decision(
     if !status_code.is_success() {
         return Err(format!("OFAPI error: {} {}", endpoint, status_code).into());
     }
-    Ok(())
+
+    let updated = status_code != StatusCode::ALREADY_REPORTED;
+    Ok(updated)
 }
