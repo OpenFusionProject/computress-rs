@@ -9,9 +9,9 @@ use ffmonitor::{Monitor, NameRequestEvent};
 use poise::{
     serenity_prelude::{
         ActivityData, ChannelId, ClientBuilder, ComponentInteraction,
-        ComponentInteractionCollector, Context, CreateActionRow, CreateButton,
-        CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, GatewayIntents,
-        GuildId, RoleId, User,
+        ComponentInteractionCollector, Context, CreateActionRow, CreateAllowedMentions,
+        CreateButton, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage,
+        GatewayIntents, GuildId, Mention, RoleId, User,
     },
     CreateReply,
 };
@@ -184,11 +184,17 @@ async fn handle_namereq_approve(
     let Some(channel) = globals.log_channel else {
         return Ok(());
     };
-    let msg = format!(
+
+    let mention = Mention::from(user.id);
+    let content = format!(
         "Name request from Player {} **approved** :white_check_mark: by {}: {}",
-        namereq.player_uid, user, namereq.requested_name
+        namereq.player_uid, mention, namereq.requested_name
     );
-    send_message(channel, &msg).await?;
+    let allowed_mentions = CreateAllowedMentions::default().empty_users(); // avoids ping
+    let msg = CreateMessage::default()
+        .content(content)
+        .allowed_mentions(allowed_mentions);
+    channel.send_message(http, msg).await?;
     Ok(())
 }
 
@@ -222,11 +228,17 @@ async fn handle_namereq_deny(globals: &Globals, interaction: &ComponentInteracti
     let Some(channel) = globals.log_channel else {
         return Ok(());
     };
-    let msg = format!(
+
+    let mention = Mention::from(user.id);
+    let content = format!(
         "Name request from Player {} **denied** :no_entry: by {}: {}",
-        namereq.player_uid, user, namereq.requested_name
+        namereq.player_uid, mention, namereq.requested_name
     );
-    send_message(channel, &msg).await?;
+    let allowed_mentions = CreateAllowedMentions::default().empty_users(); // avoids ping
+    let msg = CreateMessage::default()
+        .content(content)
+        .allowed_mentions(allowed_mentions);
+    channel.send_message(http, msg).await?;
     Ok(())
 }
 
