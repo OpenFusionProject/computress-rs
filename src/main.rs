@@ -158,11 +158,11 @@ async fn handle_namereq_approve(
     let http = &globals.context.http;
 
     let msg = interaction.message.content.clone();
-    let user = interaction.member.as_ref().unwrap().distinct();
+    let user = &interaction.member.as_ref().unwrap().user;
+    let by = user.tag();
 
     let namereq = NameRequest::parse_from_notification_message(&msg)?;
-    let updated =
-        endpoint::send_name_request_decision(globals, &namereq, "approved", &user).await?;
+    let updated = endpoint::send_name_request_decision(globals, &namereq, "approved", &by).await?;
 
     // Try to delete the initial message
     let _ = interaction.message.delete(http).await;
@@ -196,10 +196,11 @@ async fn handle_namereq_deny(globals: &Globals, interaction: &ComponentInteracti
     let http = &globals.context.http;
 
     let msg = interaction.message.content.clone();
-    let user = interaction.member.as_ref().unwrap().distinct();
+    let user = &interaction.member.as_ref().unwrap().user;
+    let by = user.tag();
 
     let namereq = NameRequest::parse_from_notification_message(&msg)?;
-    let updated = endpoint::send_name_request_decision(globals, &namereq, "denied", &user).await?;
+    let updated = endpoint::send_name_request_decision(globals, &namereq, "denied", &by).await?;
 
     // Try to delete the initial message
     let _ = interaction.message.delete(http).await;
@@ -288,12 +289,7 @@ async fn on_init() -> Result<()> {
     let globals = GLOBALS.get().unwrap();
 
     let bot_user = &globals.bot_user;
-    println!(
-        "Logged in as {}#{} ({})",
-        bot_user.display_name(),
-        bot_user.discriminator.map_or(0, |d| d.get()),
-        bot_user.id
-    );
+    println!("Logged in as {} ({})", bot_user.tag(), bot_user.id);
 
     send_message(globals.mod_channel, "Bot started").await?;
     update_status(None).await?;

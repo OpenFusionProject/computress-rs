@@ -10,6 +10,7 @@ pub(crate) async fn send_name_request_message(
         "Name request from Player {}: **{}**",
         name_request.player_uid, name_request.requested_name
     );
+
     let buttons = vec![
         CreateButton::new("namereq_approve")
             .label("Approve")
