@@ -1,14 +1,19 @@
 mod endpoint;
 mod monitor;
+mod util;
 
 use std::{env::args, process::exit, sync::LazyLock, time::Duration};
 
 use dotenv::dotenv;
-use ffmonitor::Monitor;
-use poise::serenity_prelude::{
-    ActivityData, ChannelId, ClientBuilder, ComponentInteraction, ComponentInteractionCollector,
-    Context, CreateActionRow, CreateButton, CreateInteractionResponse,
-    CreateInteractionResponseMessage, CreateMessage, GatewayIntents, GuildId, RoleId, User,
+use ffmonitor::{Monitor, NameRequestEvent};
+use poise::{
+    serenity_prelude::{
+        ActivityData, ChannelId, ClientBuilder, ComponentInteraction,
+        ComponentInteractionCollector, Context, CreateActionRow, CreateButton,
+        CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, GatewayIntents,
+        GuildId, RoleId, User,
+    },
+    CreateReply,
 };
 use regex::Regex;
 use serde::Deserialize;
@@ -65,7 +70,7 @@ struct Globals {
     state: Mutex<State>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
 struct NameRequest {
     player_uid: u64,
     requested_name: String,
@@ -81,6 +86,14 @@ impl NameRequest {
             requested_name,
         };
         Ok(req)
+    }
+}
+impl From<NameRequestEvent> for NameRequest {
+    fn from(value: NameRequestEvent) -> Self {
+        Self {
+            player_uid: value.player_uid,
+            requested_name: value.requested_name,
+        }
     }
 }
 
@@ -286,6 +299,30 @@ async fn check(ctx: poise::Context<'_, (), Error>) -> Result<()> {
     Ok(())
 }
 
+/// Get all outstanding name requests
+#[poise::command(slash_command)]
+async fn namereqs(ctx: poise::Context<'_, (), Error>) -> Result<()> {
+    let globals = GLOBALS.get().unwrap();
+    let reqs = endpoint::get_outstanding_namereqs(globals).await?;
+
+    let msg = format!("Found {} outstanding requests", reqs.len());
+    let reply = CreateReply::default()
+        .content(msg)
+        .reply(true)
+        .ephemeral(true);
+    if let Err(e) = ctx.send(reply).await {
+        println!("Failed to reply to /namereqs: {}", e);
+    }
+
+    let channel = ctx.channel_id();
+    for req in reqs {
+        if let Err(e) = util::send_name_request_message(channel, &req).await {
+            println!("Failed to send name request message: {}", e);
+        }
+    }
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() {
     println!("computress-rs v{}", env!("CARGO_PKG_VERSION"));
@@ -325,9 +362,10 @@ async fn main() {
     };
 
     let intents = GatewayIntents::non_privileged();
+    let commands = vec![check(), namereqs()];
     let framework: poise::Framework<(), Error> = poise::Framework::builder()
         .options(poise::FrameworkOptions {
-            commands: vec![check()],
+            commands,
             ..Default::default()
         })
         .setup(move |ctx, _ready, framework| {

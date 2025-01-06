@@ -2,9 +2,8 @@ use ffmonitor::{
     BroadcastEvent, ChatEvent, EmailEvent, Event, MonitorNotification, MonitorUpdate,
     NameRequestEvent,
 };
-use poise::serenity_prelude::{ButtonStyle, CreateButton};
 
-use crate::{send_message, send_message_with_buttons, update_status, Globals, Result, GLOBALS};
+use crate::{send_message, update_status, util, Globals, NameRequest, Result, GLOBALS};
 
 async fn handle_chat_event(globals: &Globals, chat: ChatEvent) -> Result<()> {
     let Some(channel) = globals.log_channel else {
@@ -57,21 +56,8 @@ async fn handle_name_request_event(
     let Some(channel) = globals.name_approvals_channel else {
         return Ok(());
     };
-
-    let messsage = format!(
-        "Name request from Player {}: **{}**",
-        name_request_event.player_uid, name_request_event.requested_name
-    );
-    let buttons = vec![
-        CreateButton::new("namereq_approve")
-            .label("Approve")
-            .style(ButtonStyle::Success),
-        CreateButton::new("namereq_deny")
-            .label("Deny")
-            .style(ButtonStyle::Danger),
-    ];
-
-    send_message_with_buttons(channel, &messsage, buttons).await?;
+    let name_request: NameRequest = name_request_event.into();
+    util::send_name_request_message(channel, &name_request).await?;
     Ok(())
 }
 

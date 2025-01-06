@@ -27,6 +27,19 @@ fn get_token() -> Result<String> {
     env::var("OFAPI_TOKEN").map_err(|_| "OFAPI_TOKEN environment variable missing".into())
 }
 
+pub(crate) async fn get_outstanding_namereqs(globals: &Globals) -> Result<Vec<NameRequest>> {
+    let endpoint = format!("https://{}/namereq", globals.ofapi_endpoint);
+    let token = get_token()?;
+    let resp = get_http_client()
+        .get(&endpoint)
+        .bearer_auth(token)
+        .send()
+        .await?;
+
+    let body = resp.json().await?;
+    Ok(body)
+}
+
 pub(crate) async fn send_name_request_decision(
     globals: &Globals,
     namereq: &NameRequest,
