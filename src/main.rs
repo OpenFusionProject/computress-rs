@@ -193,14 +193,30 @@ async fn handle_namereq_approve(
 }
 
 async fn handle_namereq_deny(globals: &Globals, interaction: &ComponentInteraction) -> Result<()> {
+    let http = &globals.context.http;
+
     let msg = interaction.message.content.clone();
     let user = interaction.member.as_ref().unwrap().distinct();
 
     let namereq = NameRequest::parse_from_notification_message(&msg)?;
-    endpoint::send_name_request_decision(globals, &namereq, "denied", &user).await?;
+    let updated = endpoint::send_name_request_decision(globals, &namereq, "denied", &user).await?;
 
     // Try to delete the initial message
-    let _ = interaction.message.delete(&globals.context.http).await;
+    let _ = interaction.message.delete(http).await;
+
+    if !updated {
+        interaction
+            .create_response(
+                http,
+                CreateInteractionResponse::Message(
+                    CreateInteractionResponseMessage::default()
+                        .ephemeral(true)
+                        .content("Request has already been processed"),
+                ),
+            )
+            .await?;
+        return Ok(());
+    }
 
     let Some(channel) = globals.log_channel else {
         return Ok(());
