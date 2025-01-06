@@ -156,8 +156,10 @@ async fn handle_namereq_approve(
     interaction: &ComponentInteraction,
 ) -> Result<()> {
     let msg = interaction.message.content.clone();
+    let user = interaction.member.as_ref().unwrap().distinct();
+
     let namereq = NameRequest::parse_from_notification_message(&msg)?;
-    endpoint::send_name_request_decision(globals, &namereq, "approved").await?;
+    endpoint::send_name_request_decision(globals, &namereq, "approved", &user).await?;
 
     // Try to delete the initial message
     let _ = interaction.message.delete(&globals.context.http).await;
@@ -166,8 +168,8 @@ async fn handle_namereq_approve(
         return Ok(());
     };
     let msg = format!(
-        "Name request from Player {} **approved** :white_check_mark:: {}",
-        namereq.player_uid, namereq.requested_name
+        "Name request from Player {} **approved** :white_check_mark: by {}: {}",
+        namereq.player_uid, user, namereq.requested_name
     );
     send_message(channel, &msg).await?;
     Ok(())
@@ -175,8 +177,10 @@ async fn handle_namereq_approve(
 
 async fn handle_namereq_deny(globals: &Globals, interaction: &ComponentInteraction) -> Result<()> {
     let msg = interaction.message.content.clone();
+    let user = interaction.member.as_ref().unwrap().distinct();
+
     let namereq = NameRequest::parse_from_notification_message(&msg)?;
-    endpoint::send_name_request_decision(globals, &namereq, "denied").await?;
+    endpoint::send_name_request_decision(globals, &namereq, "denied", &user).await?;
 
     // Try to delete the initial message
     let _ = interaction.message.delete(&globals.context.http).await;
@@ -185,8 +189,8 @@ async fn handle_namereq_deny(globals: &Globals, interaction: &ComponentInteracti
         return Ok(());
     };
     let msg = format!(
-        "Name request from Player {} **denied** :no_entry:: {}",
-        namereq.player_uid, namereq.requested_name
+        "Name request from Player {} **denied** :no_entry: by {}: {}",
+        namereq.player_uid, user, namereq.requested_name
     );
     send_message(channel, &msg).await?;
     Ok(())

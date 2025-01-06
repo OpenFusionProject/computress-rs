@@ -10,6 +10,7 @@ struct NameRequestDecision {
     player_uid: u64,
     requested_name: String,
     decision: String,
+    by: String,
 }
 
 fn get_http_client() -> &'static Client {
@@ -44,12 +45,14 @@ pub(crate) async fn send_name_request_decision(
     globals: &Globals,
     namereq: &NameRequest,
     decision: &str,
+    by: &str,
 ) -> Result<()> {
     let endpoint = format!("https://{}/namereq", globals.ofapi_endpoint);
     let req = NameRequestDecision {
         player_uid: namereq.player_uid,
         requested_name: namereq.requested_name.clone(),
         decision: decision.to_string(),
+        by: by.to_string(),
     };
 
     let token = get_token()?;
