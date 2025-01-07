@@ -37,6 +37,11 @@ pub(crate) async fn get_outstanding_namereqs(globals: &Globals) -> Result<Vec<Na
         .send()
         .await?;
 
+    let status_code = resp.status();
+    if !status_code.is_success() {
+        return Err(format!("OFAPI error: {} {}", endpoint, status_code).into());
+    }
+
     let body = resp.json().await?;
     Ok(body)
 }
