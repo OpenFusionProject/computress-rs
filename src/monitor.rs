@@ -10,13 +10,19 @@ async fn handle_chat_event(globals: &Globals, chat: ChatEvent) -> Result<()> {
         return Ok(());
     };
 
-    let message = match chat.to {
+    let mut message = match chat.to {
         Some(to) => format!(
-            "[{:?}] {} (to {}): {}",
+            "[{}] {} (to {}): {}",
             chat.kind, chat.from, to, chat.message
         ),
-        None => format!("[{:?}] {}: {}", chat.kind, chat.from, chat.message),
+        None => format!("[{}] {}: {}", chat.kind, chat.from, chat.message),
     };
+
+    // system messages should be bolded
+    if chat.from == "SYS" {
+        message = format!("**{}**", message);
+    }
+
     send_message(channel, &message).await?;
     Ok(())
 }
