@@ -11,7 +11,7 @@ name = "computress"
 [dependencies]
 dotenv = "0.15.0"
 env_logger = "0.11.6"
-ffmonitor = { git = "https://github.com/OpenFusionProject/ffmonitor", tag = "v1.2.0" }
+ffmonitor = { git = "https://github.com/OpenFusionProject/ffmonitor", tag = "v2.0.0" }
 poise = "0.6.1"
 regex = "1.11.1"
 reqwest = { version = "0.12.12", features = ["json"] }

@@ -501,8 +501,8 @@ checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 
 [[package]]
 name = "ffmonitor"
-version = "1.2.0"
-source = "git+https://github.com/OpenFusionProject/ffmonitor?tag=v1.2.0#32d3df359c1a6303d39761687686096df0d676e8"
+version = "2.0.0"
+source = "git+https://github.com/OpenFusionProject/ffmonitor?tag=v2.0.0#b4b0e85383ec7f0b17fdba49eb36462778940e01"
 dependencies = [
  "log",
  "regex",
