@@ -2,7 +2,7 @@ mod endpoint;
 mod monitor;
 mod util;
 
-use std::{env::args, process::exit, sync::LazyLock, time::Duration};
+use std::{collections::HashSet, env::args, process::exit, sync::LazyLock, time::Duration};
 
 use dotenv::dotenv;
 use ffmonitor::{Monitor, NameRequestEvent};
@@ -29,7 +29,8 @@ static NAME_REQUEST_REGEX: LazyLock<Regex> =
 #[derive(Debug, Deserialize)]
 struct Config {
     guild_id: u64,
-    mod_role_id: u64,
+    mod_role_id: Option<u64>,
+    mod_role_ids: Option<Vec<u64>>,
     mod_channel_id: u64,
     log_channel_id: u64,
     name_approvals_channel_id: u64,
@@ -41,13 +42,28 @@ impl Config {
         if self.guild_id == 0 {
             return Some("guild_id must be set");
         }
-        if self.mod_role_id == 0 {
-            return Some("mod_role_id must be set");
+        if self.mod_role_id.is_none_or(|id| id == 0)
+            && self.mod_role_ids.as_ref().is_none_or(|ids| ids.is_empty())
+        {
+            return Some("Either mod_role_id or mod_role_ids must be set");
         }
         if self.mod_channel_id == 0 {
             return Some("mod_channel_id must be set");
         }
         None
+    }
+
+    fn get_mod_role_ids(&self) -> HashSet<RoleId> {
+        let mut set = HashSet::new();
+        if let Some(id) = self.mod_role_id {
+            set.insert(RoleId::new(id));
+        }
+        if let Some(ids) = &self.mod_role_ids {
+            for id in ids {
+                set.insert(RoleId::new(*id));
+            }
+        }
+        set
     }
 }
 
@@ -60,7 +76,7 @@ struct State {
 struct Globals {
     bot_user: User,
     context: Context,
-    mod_role: RoleId,
+    mod_roles: HashSet<RoleId>,
     mod_channel: ChannelId,
     log_channel: Option<ChannelId>,
     name_approvals_channel: Option<ChannelId>,
@@ -251,7 +267,9 @@ async fn handle_interaction(globals: &Globals, interaction: ComponentInteraction
     // Check perms
     let id = interaction.data.custom_id.as_str();
     let member = interaction.member.as_ref().unwrap();
-    if PRIVILEGED_INTERACTIONS.contains(&id) && !member.roles.contains(&globals.mod_role) {
+    if PRIVILEGED_INTERACTIONS.contains(&id)
+        && !member.roles.iter().any(|r| globals.mod_roles.contains(r))
+    {
         interaction
             .create_response(
                 http,
@@ -444,7 +462,7 @@ async fn main() {
                     .set(Globals {
                         bot_user,
                         context: ctx.clone(),
-                        mod_role: RoleId::new(config.mod_role_id),
+                        mod_roles: config.get_mod_role_ids(),
                         mod_channel: ChannelId::new(config.mod_channel_id),
                         log_channel: if config.log_channel_id != 0 {
                             Some(ChannelId::new(config.log_channel_id))

@@ -1,6 +1,7 @@
 {
     "guild_id": 0,
     "mod_role_id": 0,
+    "mod_role_ids": [],
     "mod_channel_id": 0,
     "log_channel_id": 0,
     "name_approvals_channel_id": 0,
