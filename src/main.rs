@@ -366,6 +366,20 @@ async fn check(ctx: poise::Context<'_, (), Error>) -> Result<()> {
 #[poise::command(slash_command)]
 async fn namereqs(ctx: poise::Context<'_, (), Error>) -> Result<()> {
     let globals = GLOBALS.get().unwrap();
+
+    // check moderator role
+    let member = ctx.author_member().await.unwrap();
+    if !member.roles.iter().any(|r| globals.mod_roles.contains(r)) {
+        let reply = CreateReply::default()
+            .content("You don't have permission to do that.")
+            .reply(true)
+            .ephemeral(true);
+        if let Err(e) = ctx.send(reply).await {
+            println!("Failed to reply to /namereqs: {}", e);
+        }
+        return Ok(());
+    }
+
     let reqs = endpoint::get_outstanding_namereqs(globals).await?;
 
     let msg = format!("Found {} outstanding requests", reqs.len());
