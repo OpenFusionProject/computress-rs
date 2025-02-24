@@ -18,7 +18,7 @@ Next, fill out `config.json` in this project:
 ```
 {
     "guild_id": <your Discord server's ID>,
-    "mod_role_id": <ID of your moderator role for privileges>,
+    "mod_role_ids": [<IDs of your moderator roles for privileges, comma-separated>],
     "mod_channel_id": <ID of your moderation/alerts channel>,
     "log_channel_id": <ID of your chat/email log channel>,
     "name_approvals_channel_id": <ID of your name approval requests channel>,
