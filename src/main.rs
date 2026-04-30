@@ -13,6 +13,7 @@ use std::{
 use dotenv::dotenv;
 use ffmonitor::{Monitor, NameRequestEvent};
 use poise::{
+    futures_util::StreamExt as _,
     serenity_prelude::{
         ActivityData, ChannelId, ClientBuilder, ComponentInteraction,
         ComponentInteractionCollector, Context, CreateActionRow, CreateAllowedMentions,
@@ -302,27 +303,32 @@ async fn handle_interaction(interaction: ComponentInteraction) -> Result<()> {
 
 async fn collect_interactions() {
     wait_for_globals().await;
-    println!("Listening for interactions");
     let globals = GLOBALS.get().unwrap();
     loop {
         let context = {
             let context = globals.context.read().await;
             context.clone()
         };
-        let collector = ComponentInteractionCollector::new(context)
-            .filter(move |i| ALLOWED_INTERACTIONS.contains(&i.data.custom_id.as_str()));
-        tokio::select! {
-            interaction = collector.next() => {
-                let Some(interaction) = interaction else {
-                    println!("No interaction");
-                    continue;
-                };
-                if let Err(e) = handle_interaction(interaction).await {
-                    println!("Error while handling interaction: {:?}", e);
+
+        let mut collector = std::pin::pin!(ComponentInteractionCollector::new(context)
+            .filter(move |i| ALLOWED_INTERACTIONS.contains(&i.data.custom_id.as_str()))
+            .stream());
+
+        println!("Listening for interactions");
+        loop {
+            tokio::select! {
+                interaction = collector.next() => {
+                    let Some(interaction) = interaction else {
+                        break; // stream ended
+                    };
+
+                    if let Err(e) = handle_interaction(interaction).await {
+                        println!("Error while handling interaction: {:?}", e);
+                    }
                 }
-            }
-            _ = globals.reconnect_notification.notified() => {
-                println!("Reconnected, restarting interaction collector");
+                _ = globals.reconnect_notification.notified() => {
+                    break; // break out to recreate collector with new context
+                }
             }
         }
     }
@@ -332,6 +338,22 @@ async fn wait_for_globals() {
     while GLOBALS.get().is_none() {
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
+}
+
+async fn on_reconnect(new_context: Context) -> Result<()> {
+    let globals = GLOBALS.get().unwrap();
+    {
+        let mut context = globals.context.write().await;
+        *context = new_context;
+    }
+
+    println!("Reconnected to Discord");
+    send_message(globals.mod_channel, "Bot reconnected").await?;
+    globals.reconnect_notification.notify_waiters();
+
+    let num_players = globals.state.lock().await.last_player_count;
+    update_status(num_players).await?;
+    Ok(())
 }
 
 async fn on_init() -> Result<()> {
@@ -464,16 +486,8 @@ async fn main() {
             commands,
             event_handler: |ctx, event, _framework, _data| {
                 Box::pin(async move {
-                    match event {
-                        FullEvent::Ready { .. } | FullEvent::Resume { .. } => {
-                            if let Some(globals) = GLOBALS.get() {
-                                println!("Gateway reconnected, updating context");
-                                let mut context = globals.context.write().await;
-                                *context = ctx.clone();
-                                globals.reconnect_notification.notify_waiters();
-                            }
-                        }
-                        _ => {}
+                    if let FullEvent::Resume { .. } = event {
+                        let _ = on_reconnect(ctx.clone()).await;
                     }
                     Ok(())
                 })
