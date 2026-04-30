@@ -17,13 +17,13 @@ use poise::{
         ActivityData, ChannelId, ClientBuilder, ComponentInteraction,
         ComponentInteractionCollector, Context, CreateActionRow, CreateAllowedMentions,
         CreateButton, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage,
-        GatewayIntents, GuildId, Http, Mention, RoleId, User,
+        FullEvent, GatewayIntents, GuildId, Http, Mention, RoleId, User,
     },
     CreateReply,
 };
 use regex::Regex;
 use serde::Deserialize;
-use tokio::sync::{Mutex, OnceCell, RwLock};
+use tokio::sync::{Mutex, Notify, OnceCell, RwLock};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Result<T> = std::result::Result<T, Error>;
@@ -90,6 +90,7 @@ struct Globals {
     ofapi_endpoint: String,
     //
     state: Mutex<State>,
+    reconnect_notification: Notify,
 }
 
 #[derive(Debug, Deserialize)]
@@ -310,12 +311,19 @@ async fn collect_interactions() {
         };
         let collector = ComponentInteractionCollector::new(context)
             .filter(move |i| ALLOWED_INTERACTIONS.contains(&i.data.custom_id.as_str()));
-        let Some(interaction) = collector.next().await else {
-            println!("No interaction");
-            continue;
-        };
-        if let Err(e) = handle_interaction(interaction).await {
-            println!("Error while handling interaction: {:?}", e);
+        tokio::select! {
+            interaction = collector.next() => {
+                let Some(interaction) = interaction else {
+                    println!("No interaction");
+                    continue;
+                };
+                if let Err(e) = handle_interaction(interaction).await {
+                    println!("Error while handling interaction: {:?}", e);
+                }
+            }
+            _ = globals.reconnect_notification.notified() => {
+                println!("Reconnected, restarting interaction collector");
+            }
         }
     }
 }
@@ -454,6 +462,22 @@ async fn main() {
     let framework: poise::Framework<(), Error> = poise::Framework::builder()
         .options(poise::FrameworkOptions {
             commands,
+            event_handler: |ctx, event, _framework, _data| {
+                Box::pin(async move {
+                    match event {
+                        FullEvent::Ready { .. } | FullEvent::Resume { .. } => {
+                            if let Some(globals) = GLOBALS.get() {
+                                println!("Gateway reconnected, updating context");
+                                let mut context = globals.context.write().await;
+                                *context = ctx.clone();
+                                globals.reconnect_notification.notify_waiters();
+                            }
+                        }
+                        _ => {}
+                    }
+                    Ok(())
+                })
+            },
             ..Default::default()
         })
         .setup(move |ctx, _ready, framework| {
@@ -503,6 +527,7 @@ async fn main() {
                         ofapi_endpoint: config.ofapi_endpoint,
                         //
                         state: Mutex::new(state),
+                        reconnect_notification: Notify::new(),
                     })
                     .unwrap();
 
