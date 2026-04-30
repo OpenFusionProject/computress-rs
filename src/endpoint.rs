@@ -3,7 +3,7 @@ use std::{env, sync::OnceLock, time::Duration};
 use reqwest::{Client, StatusCode};
 use serde::Serialize;
 
-use crate::{Globals, NameRequest, Result};
+use crate::{Globals, NameRequest, Result, GLOBALS};
 
 #[derive(Debug, Serialize)]
 struct NameRequestDecision {
@@ -47,11 +47,11 @@ pub(crate) async fn get_outstanding_namereqs(globals: &Globals) -> Result<Vec<Na
 }
 
 pub(crate) async fn send_name_request_decision(
-    globals: &Globals,
     namereq: &NameRequest,
     decision: &str,
     by: &str,
 ) -> Result<bool> {
+    let globals = GLOBALS.get().unwrap();
     let endpoint = format!("https://{}/namereq", globals.ofapi_endpoint);
     let req = NameRequestDecision {
         player_uid: namereq.player_uid,

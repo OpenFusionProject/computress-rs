@@ -2,7 +2,13 @@ mod endpoint;
 mod monitor;
 mod util;
 
-use std::{collections::HashSet, env::args, process::exit, sync::LazyLock, time::Duration};
+use std::{
+    collections::HashSet,
+    env::args,
+    process::exit,
+    sync::{Arc, LazyLock},
+    time::Duration,
+};
 
 use dotenv::dotenv;
 use ffmonitor::{Monitor, NameRequestEvent};
@@ -11,13 +17,13 @@ use poise::{
         ActivityData, ChannelId, ClientBuilder, ComponentInteraction,
         ComponentInteractionCollector, Context, CreateActionRow, CreateAllowedMentions,
         CreateButton, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage,
-        GatewayIntents, GuildId, Mention, RoleId, User,
+        GatewayIntents, GuildId, Http, Mention, RoleId, User,
     },
     CreateReply,
 };
 use regex::Regex;
 use serde::Deserialize;
-use tokio::sync::{Mutex, OnceCell};
+use tokio::sync::{Mutex, OnceCell, RwLock};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Result<T> = std::result::Result<T, Error>;
@@ -75,7 +81,7 @@ struct State {
 #[derive(Debug)]
 struct Globals {
     bot_user: User,
-    context: Context,
+    context: RwLock<Context>,
     mod_roles: HashSet<RoleId>,
     mod_channel: ChannelId,
     log_channel: Option<ChannelId>,
@@ -115,17 +121,24 @@ impl From<NameRequestEvent> for NameRequest {
 
 static GLOBALS: OnceCell<Globals> = OnceCell::const_new();
 
+async fn get_http() -> Arc<Http> {
+    let globals = GLOBALS.get().unwrap();
+    let context = globals.context.read().await;
+    context.http.clone()
+}
+
 async fn set_listening_to(text: &str) -> Result<()> {
     let globals = GLOBALS.get().unwrap();
     globals
         .context
+        .read()
+        .await
         .set_activity(Some(ActivityData::listening(text)));
     Ok(())
 }
 
 async fn send_message(channel_id: ChannelId, message: &str) -> Result<()> {
-    let globals = GLOBALS.get().unwrap();
-    let http = &globals.context.http;
+    let http = get_http().await;
     channel_id.say(http, message).await?;
     Ok(())
 }
@@ -135,9 +148,8 @@ async fn send_message_with_buttons(
     message: &str,
     buttons: Vec<CreateButton>,
 ) -> Result<()> {
-    let globals = GLOBALS.get().unwrap();
-    let http = &globals.context.http;
     let components = vec![CreateActionRow::Buttons(buttons)];
+    let http = get_http().await;
     channel_id
         .send_message(
             http,
@@ -167,26 +179,21 @@ async fn update_status(num_players: Option<usize>) -> Result<()> {
     Ok(())
 }
 
-async fn handle_namereq_approve(
-    globals: &Globals,
-    interaction: &ComponentInteraction,
-) -> Result<()> {
-    let http = &globals.context.http;
-
+async fn handle_namereq_approve(interaction: &ComponentInteraction) -> Result<()> {
     let msg = interaction.message.content.clone();
     let user = &interaction.member.as_ref().unwrap().user;
     let by = user.tag();
 
     let namereq = NameRequest::parse_from_notification_message(&msg)?;
-    let updated = endpoint::send_name_request_decision(globals, &namereq, "approved", &by).await?;
+    let updated = endpoint::send_name_request_decision(&namereq, "approved", &by).await?;
 
     // Try to delete the initial message
-    let _ = interaction.message.delete(http).await;
+    let _ = interaction.message.delete(get_http().await).await;
 
     if !updated {
         interaction
             .create_response(
-                http,
+                get_http().await,
                 CreateInteractionResponse::Message(
                     CreateInteractionResponseMessage::default()
                         .ephemeral(true)
@@ -197,6 +204,7 @@ async fn handle_namereq_approve(
         return Ok(());
     }
 
+    let globals = GLOBALS.get().unwrap();
     let Some(channel) = globals.log_channel else {
         return Ok(());
     };
@@ -210,27 +218,25 @@ async fn handle_namereq_approve(
     let msg = CreateMessage::default()
         .content(content)
         .allowed_mentions(allowed_mentions);
-    channel.send_message(http, msg).await?;
+    channel.send_message(get_http().await, msg).await?;
     Ok(())
 }
 
-async fn handle_namereq_deny(globals: &Globals, interaction: &ComponentInteraction) -> Result<()> {
-    let http = &globals.context.http;
-
+async fn handle_namereq_deny(interaction: &ComponentInteraction) -> Result<()> {
     let msg = interaction.message.content.clone();
     let user = &interaction.member.as_ref().unwrap().user;
     let by = user.tag();
 
     let namereq = NameRequest::parse_from_notification_message(&msg)?;
-    let updated = endpoint::send_name_request_decision(globals, &namereq, "denied", &by).await?;
+    let updated = endpoint::send_name_request_decision(&namereq, "denied", &by).await?;
 
     // Try to delete the initial message
-    let _ = interaction.message.delete(http).await;
+    let _ = interaction.message.delete(get_http().await).await;
 
     if !updated {
         interaction
             .create_response(
-                http,
+                get_http().await,
                 CreateInteractionResponse::Message(
                     CreateInteractionResponseMessage::default()
                         .ephemeral(true)
@@ -241,6 +247,7 @@ async fn handle_namereq_deny(globals: &Globals, interaction: &ComponentInteracti
         return Ok(());
     }
 
+    let globals = GLOBALS.get().unwrap();
     let Some(channel) = globals.log_channel else {
         return Ok(());
     };
@@ -254,15 +261,15 @@ async fn handle_namereq_deny(globals: &Globals, interaction: &ComponentInteracti
     let msg = CreateMessage::default()
         .content(content)
         .allowed_mentions(allowed_mentions);
-    channel.send_message(http, msg).await?;
+    channel.send_message(get_http().await, msg).await?;
     Ok(())
 }
 
 const ALLOWED_INTERACTIONS: [&str; 2] = ["namereq_approve", "namereq_deny"];
 const PRIVILEGED_INTERACTIONS: [&str; 2] = ["namereq_approve", "namereq_deny"];
 
-async fn handle_interaction(globals: &Globals, interaction: ComponentInteraction) -> Result<()> {
-    let http = &globals.context.http;
+async fn handle_interaction(interaction: ComponentInteraction) -> Result<()> {
+    let globals = GLOBALS.get().unwrap();
 
     // Check perms
     let id = interaction.data.custom_id.as_str();
@@ -272,7 +279,7 @@ async fn handle_interaction(globals: &Globals, interaction: ComponentInteraction
     {
         interaction
             .create_response(
-                http,
+                get_http().await,
                 CreateInteractionResponse::Message(
                     CreateInteractionResponseMessage::default()
                         .ephemeral(true)
@@ -284,8 +291,8 @@ async fn handle_interaction(globals: &Globals, interaction: ComponentInteraction
     }
 
     match id {
-        "namereq_approve" => handle_namereq_approve(globals, &interaction).await?,
-        "namereq_deny" => handle_namereq_deny(globals, &interaction).await?,
+        "namereq_approve" => handle_namereq_approve(&interaction).await?,
+        "namereq_deny" => handle_namereq_deny(&interaction).await?,
         _ => return Err(format!("Unknown interaction: {}", id).into()),
     }
 
@@ -297,13 +304,17 @@ async fn collect_interactions() {
     println!("Listening for interactions");
     let globals = GLOBALS.get().unwrap();
     loop {
-        let collector = ComponentInteractionCollector::new(globals.context.clone())
+        let context = {
+            let context = globals.context.read().await;
+            context.clone()
+        };
+        let collector = ComponentInteractionCollector::new(context)
             .filter(move |i| ALLOWED_INTERACTIONS.contains(&i.data.custom_id.as_str()));
         let Some(interaction) = collector.next().await else {
             println!("No interaction");
             continue;
         };
-        if let Err(e) = handle_interaction(globals, interaction).await {
+        if let Err(e) = handle_interaction(interaction).await {
             println!("Error while handling interaction: {:?}", e);
         }
     }
@@ -475,7 +486,7 @@ async fn main() {
                 GLOBALS
                     .set(Globals {
                         bot_user,
-                        context: ctx.clone(),
+                        context: RwLock::new(ctx.clone()),
                         mod_roles: config.get_mod_role_ids(),
                         mod_channel: ChannelId::new(config.mod_channel_id),
                         log_channel: if config.log_channel_id != 0 {
