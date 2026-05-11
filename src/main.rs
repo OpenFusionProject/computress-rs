@@ -43,6 +43,8 @@ struct Config {
     name_approvals_channel_id: u64,
     monitor_address: String,
     ofapi_endpoint: String,
+    #[serde(default)]
+    search_query_string: String,
 }
 impl Config {
     fn validate(&self) -> Option<&str> {
@@ -89,6 +91,7 @@ struct Globals {
     name_approvals_channel: Option<ChannelId>,
     monitor_address: String,
     ofapi_endpoint: String,
+    search_query_string: String,
     //
     state: Mutex<State>,
     reconnect_notification: Notify,
@@ -434,7 +437,7 @@ async fn namereqs(ctx: poise::Context<'_, (), Error>) -> Result<()> {
 
     let channel = ctx.channel_id();
     for req in reqs {
-        if let Err(e) = util::send_name_request_message(channel, &req).await {
+        if let Err(e) = util::send_name_request_message(channel, &req, &globals.search_query_string).await {
             println!("Failed to send name request message: {}", e);
         }
     }
@@ -539,6 +542,7 @@ async fn main() {
                         },
                         monitor_address: config.monitor_address,
                         ofapi_endpoint: config.ofapi_endpoint,
+                        search_query_string: config.search_query_string,
                         //
                         state: Mutex::new(state),
                         reconnect_notification: Notify::new(),

@@ -5,5 +5,6 @@
     "log_channel_id": 0,
     "name_approvals_channel_id": 0,
     "monitor_address": "127.0.0.1:8003",
-    "ofapi_endpoint": "api.example.xyz"
+    "ofapi_endpoint": "api.example.xyz",
+    "search_query_string": "https://www.google.com/search?q={}"
 }

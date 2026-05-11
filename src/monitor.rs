@@ -63,7 +63,7 @@ async fn handle_name_request_event(
         return Ok(());
     };
     let name_request: NameRequest = name_request_event.into();
-    util::send_name_request_message(channel, &name_request).await?;
+    util::send_name_request_message(channel, &name_request, &globals.search_query_string).await?;
     Ok(())
 }
 
