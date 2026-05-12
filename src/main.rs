@@ -43,8 +43,7 @@ struct Config {
     name_approvals_channel_id: u64,
     monitor_address: String,
     ofapi_endpoint: String,
-    #[serde(default)]
-    search_query_string: String,
+    search_query_string: Option<String>,
 }
 impl Config {
     fn validate(&self) -> Option<&str> {
@@ -91,7 +90,7 @@ struct Globals {
     name_approvals_channel: Option<ChannelId>,
     monitor_address: String,
     ofapi_endpoint: String,
-    search_query_string: String,
+    search_query_string: Option<String>,
     //
     state: Mutex<State>,
     reconnect_notification: Notify,
